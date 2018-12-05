@@ -1,0 +1,17 @@
+Package: HDF5S3
+Type: Package
+Title: Load HDF5Array data from an S3 location
+Version: 0.0.2
+Authors@R: person("Marcel", "Ramos", email = "marcel.ramos@roswellpark.org",
+    role = c("aut", "cre"))
+Description: HDF5S3 makes use of aws.s3 to interface with an S3 bucket location
+    and load HDF5 files as a Bioconductor object for analysis.
+Depends: R (>= 3.5.0)
+Imports:
+    aws.s3,
+    BiocFileCache,
+    HDF5Array
+Remotes: waldronlab/cacheur
+Suggests: knitr
+License: Artistic-2.0 + LICENSE
+RoxygenNote: 6.1.1
