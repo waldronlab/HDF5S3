@@ -10,19 +10,32 @@ options(
         dir.create(local_dir)
 }
 
-.download_from_s3 <-
-    function(bucket = "multiassayexperiments", dataname, location = ".")
-{
-    STD_FILES <- c("se.rds", "assays.h5")
+.getResourceName <- function(url) {
+    gsub("\\.[Rr][Dd][Ss]|\\.[Hh]5", "", basename(url))
+}
 
-    local_dir <- file.path(location, dataname)
+.download_from_s3 <-
+    function(remote_loc = "multiassayexperiments", dataname, local_loc = ".")
+{
+    if (missing(dataname) && startsWith(tolower(remote_loc), "http"))
+        dataname <- .getResourceName(remote_loc)
+
+    std_files <- c("se.rds", "assays.h5")
+
+    local_dir <- file.path(local_loc, dataname)
     if (!dir.exists(local_dir))
         dir.create(local_dir)
 
-    for (i in STD_FILES) {
+    s3obj_path <-
+        if (startsWith(tolower(remote_loc), "http"))
+            paste0(dataname, c(".rds", ".h5"))
+        else
+            file.path(dataname, std_files)
+
+    for (i in s3obj_path) {
         aws.s3::save_object(
-            object = file.path(dataname, i),
-            bucket = bucket,
+            object = i,
+            bucket = remote_loc,
             file = file.path(local_dir, i)
         )
     }
@@ -88,6 +101,34 @@ options(
 
     bfcrpath(bfc, rids = rids)
 }
+
+# https://s3.amazonaws.com/experimenthub/curatedTCGAData/ACC_Methylation-20160128.rds
+
+.add_from_url <- function(url) {
+    dataname <- gsub("\\.[Rr][Dd][Ss]|\\.[Hh]5", "", basename(url))
+    bfc <- cacheur::getCache()
+    rids <- bfcquery(bfc, dataname, "rname")$rid
+    if (!length(rids)) {
+        file1 <- file.path(dirname(url), dataname, ".rds")
+        file2 <- file.path(dirname(url), dataname, ".h5")
+        rids <- stats::setNames(c(
+        names(bfcadd(bfc, paste0(dataname, ".h5"), file1, rtype = "web",
+            download = FALSE)),
+        names(bfcadd(bfc, paste0(dataname, ".rds"), file2, rtype = "web",
+            download = FALSE))),
+        c("assays.h5", "se.rds"))
+    }
+    if (!.files_exist(bfc, dataname) || force) {
+        if (verbose)
+            message("Downloading data for: ", dataname)
+            dfolder <- .download_from_s3(bucket = bucket, dataname = dataname)
+            .manage_local_file(dfolder)
+    } else
+        message("Data in cache: ", dataname)
+
+    bfcrpath(bfc, rids = rids)
+}
+
 #' Pull HDF5Array files from the associated S3 bucket
 #'
 #' This function downloads and caches data from an Amazon S3 bucket and
@@ -103,11 +144,14 @@ options(
 #'
 #' @export loadDelayedSEFromS3
 loadDelayedSEFromS3 <-
-    function(bucket = "multiassayexperiments", dataname = "example",
+    function(location = "multiassayexperiments", dataname = "example",
         verbose = FALSE, force = FALSE)
 {
-    paths <- .add_from_bucket(bucket = bucket, dataname = dataname,
-        verbose = verbose, force = force)
+    if (startsWith(location, "http"))
+        paths <- .add_from_url(location)
+    else
+        paths <- .add_from_bucket(bucket = bucket, dataname = dataname,
+            verbose = verbose, force = force)
     path <- unique(dirname(paths))
     stopifnot(S4Vectors::isSingleString(path))
     HDF5Array::loadHDF5SummarizedExperiment(path)
